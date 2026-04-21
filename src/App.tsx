@@ -21,7 +21,11 @@ import {
   ChevronRight,
   Menu,
   Palette,
-  Layout
+  Layout,
+  Eye,
+  EyeOff,
+  Rows,
+  Columns
 } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 import { auth } from './firebase';
@@ -29,7 +33,7 @@ import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { db as ldb } from './localDb';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { nanoid } from 'nanoid';
-import { MindMap, Theme } from './types';
+import { MindMap, Theme, LayoutOrientation } from './types';
 import { parseTextToFlow } from './parser';
 import { useSync } from './sync';
 import { cn } from './lib/utils';
@@ -42,7 +46,9 @@ export default function App() {
   const [activeMapId, setActiveMapId] = useState<string | null>(null);
   const [inputText, setInputText] = useState('');
   const [theme, setTheme] = useState<Theme>('organic'); // Default to organic for natural tones
+  const [orientation, setOrientation] = useState<LayoutOrientation>('horizontal');
   const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [isInputVisible, setInputVisible] = useState(true);
   const [isAiLoading, setIsAiLoading] = useState(false);
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -56,6 +62,7 @@ export default function App() {
       setNodes(activeMap.data.nodes);
       setEdges(activeMap.data.edges);
       setTheme(activeMap.theme);
+      setOrientation(activeMap.layout || 'horizontal');
       // Re-construct text if needed, but for now we trust the flow data
     } else {
       setNodes([]);
@@ -68,7 +75,8 @@ export default function App() {
     const newMap: MindMap = {
       id,
       title: 'Untilted Map',
-      theme: 'modern',
+      theme: 'organic',
+      layout: 'horizontal',
       data: { nodes: [], edges: [] },
       updatedAt: Date.now(),
       ownerId: user?.uid || 'local',
@@ -79,8 +87,8 @@ export default function App() {
     setInputText('');
   };
 
-  const handleGenerateFromText = useCallback((text: string, currentTheme: Theme) => {
-    const { nodes: newNodes, edges: newEdges } = parseTextToFlow(text, currentTheme);
+  const handleGenerateFromText = useCallback((text: string, currentTheme: Theme, currentOrientation: LayoutOrientation) => {
+    const { nodes: newNodes, edges: newEdges } = parseTextToFlow(text, currentTheme, currentOrientation);
     setNodes(newNodes);
     setEdges(newEdges);
     
@@ -106,7 +114,7 @@ export default function App() {
       });
       const generatedText = response.text || '';
       setInputText(generatedText);
-      handleGenerateFromText(generatedText, theme);
+      handleGenerateFromText(generatedText, theme, orientation);
     } catch (error) {
       console.error('AI error:', error);
     } finally {
@@ -225,24 +233,53 @@ export default function App() {
           
           <div className="flex items-center gap-2">
              {activeMapId && (
-              <div className="flex bg-natural-surface p-1 rounded-xl gap-1 border border-natural-border">
-                {(['modern', 'cyberpunk', 'organic', 'brutalist', 'minimal'] as Theme[]).map((t) => (
+              <>
+                <div className="flex bg-natural-surface p-1 rounded-xl gap-1 border border-natural-border mr-2">
                   <button
-                    key={t}
                     onClick={() => {
-                      setTheme(t);
-                      ldb.mindmaps.update(activeMapId, { theme: t, updatedAt: Date.now(), isDirty: 1 });
-                      handleGenerateFromText(inputText, t);
+                        const newOrientation = orientation === 'horizontal' ? 'vertical' : 'horizontal';
+                        setOrientation(newOrientation);
+                        ldb.mindmaps.update(activeMapId, { layout: newOrientation, updatedAt: Date.now(), isDirty: 1 });
+                        handleGenerateFromText(inputText, theme, newOrientation);
                     }}
-                    className={cn(
-                      "px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-wider font-bold transition-all",
-                      theme === t ? "bg-white text-natural-sage shadow-sm border border-natural-border" : "text-natural-meta hover:bg-white/50"
-                    )}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-white transition-colors"
+                    title={orientation === 'horizontal' ? 'Switch to Vertical' : 'Switch to Horizontal'}
                   >
-                    {t}
+                    {orientation === 'horizontal' ? <Columns className="w-4 h-4" /> : <Rows className="w-4 h-4" />}
+                    <span className="capitalize">{orientation}</span>
                   </button>
-                ))}
-              </div>
+                </div>
+
+                <div className="flex bg-natural-surface p-1 rounded-xl gap-1 border border-natural-border mr-2">
+                  <button
+                    onClick={() => setInputVisible(!isInputVisible)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-white transition-colors"
+                    title={isInputVisible ? 'Hide Controls' : 'Show Controls'}
+                  >
+                    {isInputVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    <span>{isInputVisible ? 'Hide' : 'Show'}</span>
+                  </button>
+                </div>
+
+                <div className="flex bg-natural-surface p-1 rounded-xl gap-1 border border-natural-border">
+                  {(['modern', 'cyberpunk', 'organic', 'brutalist', 'minimal'] as Theme[]).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => {
+                        setTheme(t);
+                        ldb.mindmaps.update(activeMapId, { theme: t, updatedAt: Date.now(), isDirty: 1 });
+                        handleGenerateFromText(inputText, t, orientation);
+                      }}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-wider font-bold transition-all",
+                        theme === t ? "bg-white text-natural-sage shadow-sm border border-natural-border" : "text-natural-meta hover:bg-white/50"
+                      )}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </>
              )}
           </div>
         </header>
@@ -250,46 +287,53 @@ export default function App() {
         {/* Content Body */}
         <main className="flex-grow flex relative">
           {/* Controls Panel (Overlay) */}
-          {activeMapId && (
-            <div className="absolute left-6 top-6 w-80 z-10 flex flex-col gap-4">
-              <div className="bg-white/90 backdrop-blur shadow-2xl rounded-2xl p-5 border border-natural-border flex flex-col gap-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-black uppercase tracking-widest text-natural-ink flex items-center gap-2">
-                    <Palette className="w-4 h-4 text-natural-sage" /> Map Data
-                  </h3>
+          <AnimatePresence>
+            {activeMapId && isInputVisible && (
+              <motion.div 
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="absolute left-6 top-6 w-80 z-10 flex flex-col gap-4"
+              >
+                <div className="bg-white/90 backdrop-blur shadow-2xl rounded-2xl p-5 border border-natural-border flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-black uppercase tracking-widest text-natural-ink flex items-center gap-2">
+                      <Palette className="w-4 h-4 text-natural-sage" /> Map Data
+                    </h3>
+                    <button 
+                      disabled={isAiLoading || !inputText}
+                      onClick={handleAiGenerate}
+                      className="p-2 text-natural-sage hover:bg-natural-surface rounded-lg transition-all disabled:opacity-50"
+                      title="Generate with AI"
+                    >
+                      <BrainCircuit className={cn("w-5 h-5", isAiLoading && "animate-pulse")} />
+                    </button>
+                  </div>
+                  <textarea 
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    className="w-full h-48 bg-natural-surface/50 border border-natural-border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-natural-sage/20 focus:border-natural-sage/40 transition-all outline-none"
+                    placeholder="Root Topic&#10;  Subtopic 1&#10;    Concept A&#10;    Concept B&#10;  Subtopic 2"
+                  />
                   <button 
-                    disabled={isAiLoading || !inputText}
-                    onClick={handleAiGenerate}
-                    className="p-2 text-natural-sage hover:bg-natural-surface rounded-lg transition-all disabled:opacity-50"
-                    title="Generate with AI"
+                    onClick={() => handleGenerateFromText(inputText, theme, orientation)}
+                    className="w-full py-3 bg-natural-ink text-white rounded-xl text-sm font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2"
                   >
-                    <BrainCircuit className={cn("w-5 h-5", isAiLoading && "animate-pulse")} />
+                    <Save className="w-4 h-4" /> Apply Changes
                   </button>
                 </div>
-                <textarea 
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  className="w-full h-48 bg-natural-surface/50 border border-natural-border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-natural-sage/20 focus:border-natural-sage/40 transition-all outline-none"
-                  placeholder="Root Topic&#10;  Subtopic 1&#10;    Concept A&#10;    Concept B&#10;  Subtopic 2"
-                />
-                <button 
-                  onClick={() => handleGenerateFromText(inputText, theme)}
-                  className="w-full py-3 bg-natural-ink text-white rounded-xl text-sm font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2"
-                >
-                  <Save className="w-4 h-4" /> Apply Changes
-                </button>
-              </div>
 
-              {/* Status Info */}
-              <div className={cn(
-                "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 border shadow-lg backdrop-blur bg-white/90",
-                isOnline ? "border-natural-sage/20 text-natural-sage" : "border-natural-meta/20 text-natural-meta"
-              )}>
-                <div className={cn("w-2 h-2 rounded-full", isOnline ? "bg-natural-sage shadow-[0_0_8px_#829281]" : "bg-natural-meta animate-pulse")} />
-                {isOnline ? 'Cloud Synced' : 'Offline Persistence'}
-              </div>
-            </div>
-          )}
+                {/* Status Info */}
+                <div className={cn(
+                  "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 border shadow-lg backdrop-blur bg-white/90",
+                  isOnline ? "border-natural-sage/20 text-natural-sage" : "border-natural-meta/20 text-natural-meta"
+                )}>
+                  <div className={cn("w-2 h-2 rounded-full", isOnline ? "bg-natural-sage shadow-[0_0_8px_#829281]" : "bg-natural-meta animate-pulse")} />
+                  {isOnline ? 'Cloud Synced' : 'Offline Persistence'}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Visual Canvas */}
           <div className={cn("flex-grow h-full bg-slate-50", `theme-${theme}`)}>

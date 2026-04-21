@@ -1,8 +1,8 @@
 import { Node, Edge, MarkerType } from 'reactflow';
 import { nanoid } from 'nanoid';
-import { Theme } from './types';
+import { Theme, LayoutOrientation } from './types';
 
-export function parseTextToFlow(text: string, theme: Theme): { nodes: Node[]; edges: Edge[] } {
+export function parseTextToFlow(text: string, theme: Theme, orientation: LayoutOrientation = 'horizontal'): { nodes: Node[]; edges: Edge[] } {
   const lines = text.split('\n').filter(line => line.trim().length > 0);
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -13,10 +13,17 @@ export function parseTextToFlow(text: string, theme: Theme): { nodes: Node[]; ed
     const content = line.trim();
     const id = nanoid();
     
-    // Position calculation
+    // Position calculation based on orientation
     const depth = indent / 2;
-    const x = depth * 250;
-    const y = index * 100;
+    let x, y;
+
+    if (orientation === 'vertical') {
+      x = index * 200;
+      y = depth * 150;
+    } else {
+      x = depth * 250;
+      y = index * 100;
+    }
 
     nodes.push({
       id,
