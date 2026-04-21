@@ -1,0 +1,24 @@
+{
+  "entities": {
+    "MindMap": {
+      "title": "Mind Map",
+      "description": "A collection of nodes and edges representing a mind map",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "theme": { "type": "string", "enum": ["modern", "cyberpunk", "organic", "brutalist", "minimal"] },
+        "data": { "type": "object" },
+        "updatedAt": { "type": "number" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["id", "title", "theme", "data", "updatedAt", "ownerId"]
+    }
+  },
+  "firestore": {
+    "/mindmaps/{mapId}": {
+      "schema": "MindMap",
+      "description": "Store user mind maps"
+    }
+  }
+}
